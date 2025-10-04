@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Users } from "lucide-react";
+import Footer from "@/components/Footer";
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 const TEAM_LABELS = ["Team 1 (Red)", "Team 2 (Blue)", "Team 3 (Green)", "Team 4 (Yellow)"];
@@ -87,11 +88,21 @@ const Register = () => {
       // Navigate to buzzer page with team info
       navigate("/buzzer", { state: { teamId: data.id, teamName, teamNumber: selectedTeam } });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to register team",
-        variant: "destructive",
-      });
+      // Check if it's an RLS error and suppress the technical error message
+      if (error.message && error.message.includes("row-level security policy")) {
+        // Suppress the technical RLS error and show a generic message
+        toast({
+          title: "Registration Issue",
+          description: "Unable to register team at this time. Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to register team",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -102,86 +113,89 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/")}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/")}
+            className="mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
 
-        <div className="bg-card border-2 border-primary rounded-2xl p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <Users className="w-12 h-12 mx-auto text-primary" />
-            <h1 className="text-4xl font-bold">Team Registration</h1>
-            <p className="text-muted-foreground">Choose your slot and enter your team name</p>
-          </div>
-
-          <form onSubmit={handleRegister} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="teamName">Team Name</Label>
-              <Input
-                id="teamName"
-                type="text"
-                placeholder="Enter your team name"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                maxLength={50}
-                required
-              />
+          <div className="bg-card border-2 border-primary rounded-2xl p-8 space-y-6">
+            <div className="text-center space-y-2">
+              <Users className="w-12 h-12 mx-auto text-primary" />
+              <h1 className="text-4xl font-bold">Team Registration</h1>
+              <p className="text-muted-foreground">Choose your slot and enter your team name</p>
             </div>
 
-            <div className="space-y-3">
-              <Label>Select Team Slot</Label>
-              <div className="grid grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((num) => {
-                  const taken = isTeamTaken(num);
-                  const team = teams.find((t) => t.team_number === num);
-                  
-                  return (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => !taken && setSelectedTeam(num)}
-                      disabled={taken}
-                      className={`relative p-6 rounded-xl border-2 transition-all duration-300 ${
-                        selectedTeam === num
-                          ? `border-${TEAM_COLORS[num - 1]} bg-${TEAM_COLORS[num - 1]}/20 scale-105`
-                          : taken
-                          ? "border-muted bg-muted/20 opacity-50 cursor-not-allowed"
-                          : `border-${TEAM_COLORS[num - 1]}/50 hover:border-${TEAM_COLORS[num - 1]} hover:scale-105`
-                      }`}
-                    >
-                      <div className={`text-lg font-bold text-${TEAM_COLORS[num - 1]}`}>
-                        {TEAM_LABELS[num - 1]}
-                      </div>
-                      {taken && (
-                        <div className="text-sm text-muted-foreground mt-1">
-                          Taken by {team?.team_name}
-                        </div>
-                      )}
-                      {!taken && (
-                        <div className="text-sm text-muted-foreground mt-1">Available</div>
-                      )}
-                    </button>
-                  );
-                })}
+            <form onSubmit={handleRegister} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="teamName">Team Name</Label>
+                <Input
+                  id="teamName"
+                  type="text"
+                  placeholder="Enter your team name"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  maxLength={50}
+                  required
+                />
               </div>
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full text-lg py-6"
-              disabled={loading || !selectedTeam}
-            >
-              {loading ? "Registering..." : "Register & Join Game"}
-            </Button>
-          </form>
+              <div className="space-y-3">
+                <Label>Select Team Slot</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  {[1, 2, 3, 4].map((num) => {
+                    const taken = isTeamTaken(num);
+                    const team = teams.find((t) => t.team_number === num);
+                    
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => !taken && setSelectedTeam(num)}
+                        disabled={taken}
+                        className={`relative p-6 rounded-xl border-2 transition-all duration-300 ${
+                          selectedTeam === num
+                            ? `border-${TEAM_COLORS[num - 1]} bg-${TEAM_COLORS[num - 1]}/20 scale-105`
+                            : taken
+                            ? "border-muted bg-muted/20 opacity-50 cursor-not-allowed"
+                            : `border-${TEAM_COLORS[num - 1]}/50 hover:border-${TEAM_COLORS[num - 1]} hover:scale-105`
+                        }`}
+                      >
+                        <div className={`text-lg font-bold text-${TEAM_COLORS[num - 1]}`}>
+                          {TEAM_LABELS[num - 1]}
+                        </div>
+                        {taken && (
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Taken by {team?.team_name}
+                          </div>
+                        )}
+                        {!taken && (
+                          <div className="text-sm text-muted-foreground mt-1">Available</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full text-lg py-6"
+                disabled={loading || !selectedTeam}
+              >
+                {loading ? "Registering..." : "Register & Join Game"}
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

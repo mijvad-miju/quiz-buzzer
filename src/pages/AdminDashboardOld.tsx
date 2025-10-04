@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye } from "lucide-react";
+import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye, BookOpen } from "lucide-react";
 import Footer from "@/components/Footer";
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
@@ -26,24 +26,7 @@ const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [gameState, setGameState] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
-  const [question, setQuestion] = useState(() => {
-    // Load question from localStorage on component mount
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('admin_question_draft') || '';
-    }
-    return '';
-  });
-  const [imageUrl, setImageUrl] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [buzzEvents, setBuzzEvents] = useState<any[]>([]);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  
-  // Question management state
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [isQuizActive, setIsQuizActive] = useState(false);
-  const [showQuestionManager, setShowQuestionManager] = useState(true);
 
   useEffect(() => {
     // Check auth
@@ -151,37 +134,7 @@ const AdminDashboard = () => {
     if (data) setTeams(data);
   };
 
-  const fetchQuestions = async () => {
-    const { data } = await supabase
-      .from("questions")
-      .select("*")
-      .order("created_at");
-    if (data) setQuestions(data);
-  };
 
-  const handleUpdateQuestion = async () => {
-    try {
-      const { error } = await supabase
-        .from("game_state")
-        .update({ 
-          current_question: question,
-          image_url: imageUrl || null,
-          is_locked: false,
-          first_buzzer_team_id: null
-        })
-        .eq("id", gameState.id);
-
-      if (error) throw error;
-
-      // Clear buzz events
-      await supabase.from("buzz_events").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      setBuzzEvents([]);
-
-      toast({ title: "Question updated and buzzers reset!" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  };
 
   const handleUnlock = async () => {
     try {
@@ -536,40 +489,18 @@ const AdminDashboard = () => {
             <Zap className="w-8 h-8 text-primary" />
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
           </div>
-          <Button onClick={handleSignOut} variant="outline">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate("/questions")} className="bg-primary">
+              <BookOpen className="w-4 h-4 mr-2" />
+              Questions
+            </Button>
+            <Button onClick={handleSignOut} variant="outline">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
         </div>
 
-        {/* Question Management */}
-        <div className="bg-card border-2 border-primary rounded-2xl p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Question Management</h2>
-            <div className="flex gap-2">
-              <Button 
-                onClick={() => setShowQuestionManager(!showQuestionManager)} 
-                variant="outline" 
-                size="sm"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                {showQuestionManager ? "Hide" : "Show"} Questions
-              </Button>
-              <Button onClick={toggleFullscreen} variant="outline" size="sm">
-                {isFullscreen ? (
-                  <>
-                    <Minimize className="w-4 h-4 mr-2" />
-                    Exit Fullscreen
-                  </>
-                ) : (
-                  <>
-                    <Maximize className="w-4 h-4 mr-2" />
-                    Show Fullscreen
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
           <div className="space-y-4">
             <div className="flex gap-4">
               <Input

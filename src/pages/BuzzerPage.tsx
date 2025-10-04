@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Zap, ArrowLeft } from "lucide-react";
+import Footer from "@/components/Footer";
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
@@ -125,59 +126,82 @@ const BuzzerPage = () => {
   const teamColor = TEAM_COLORS[teamNumber - 1];
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <Button
-        variant="ghost"
-        onClick={() => navigate("/register")}
-        className="absolute top-4 left-4"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Leave Game
-      </Button>
+    <div className="min-h-screen flex flex-col">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+        <Button
+          variant="ghost"
+          onClick={() => navigate("/register")}
+          className="absolute top-4 left-4"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Leave Game
+        </Button>
 
-      <div className="w-full max-w-2xl space-y-8">
-        {/* Team Info */}
-        <div className="text-center space-y-2">
-          <div className={`text-6xl font-bold text-${teamColor}`}>
-            {teamName}
-          </div>
-          <div className="text-xl text-muted-foreground">
-            {gameState?.current_question || "Waiting for question..."}
-          </div>
-        </div>
-
-        {/* Buzzer Button */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleBuzz}
-            disabled={!canBuzz || buzzed}
-            className={`relative w-72 h-72 rounded-full border-8 transition-all duration-300 ${
-              !canBuzz || buzzed
-                ? "opacity-50 cursor-not-allowed border-muted"
-                : `border-${teamColor} hover:scale-110 active:scale-95 glow-${teamColor}`
-            } ${buzzed ? "animate-buzz" : ""}`}
-            style={{
-              background: `radial-gradient(circle, hsl(var(--${teamColor}) / 0.3), hsl(var(--${teamColor}) / 0.1))`,
-            }}
-          >
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <Zap className={`w-24 h-24 text-${teamColor} ${!canBuzz || buzzed ? "" : "animate-pulse-glow"}`} />
-              <div className={`text-2xl font-bold text-${teamColor} mt-4`}>
-                {buzzed ? "BUZZED!" : canBuzz ? "BUZZ" : "LOCKED"}
+        <div className="w-full max-w-2xl space-y-8">
+          {/* Team Info */}
+          <div className="text-center space-y-4">
+            <div className={`text-6xl font-bold text-${teamColor}`}>
+              {teamName}
+            </div>
+            
+            {/* Question Image */}
+            {gameState?.image_url && (
+              <div className="flex justify-center mb-4">
+                <img 
+                  src={gameState.image_url} 
+                  alt="Question image" 
+                  className="max-w-full max-h-64 object-contain rounded-lg shadow-lg"
+                  onError={(e) => {
+                    console.error('Image failed to load in BuzzerPage:', gameState.image_url);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                  onLoad={() => {
+                    console.log('Image loaded successfully in BuzzerPage:', gameState.image_url);
+                  }}
+                />
               </div>
+            )}
+            
+            {/* Question Text */}
+            <div className="text-xl text-muted-foreground">
+              {gameState?.current_question || "Waiting for question..."}
             </div>
-          </button>
-        </div>
+          </div>
 
-        {/* Status */}
-        <div className="text-center">
-          {gameState?.is_locked && (
-            <div className="text-lg text-muted-foreground">
-              Game is locked. Waiting for admin to unlock...
-            </div>
-          )}
+          {/* Buzzer Button */}
+          <div className="flex justify-center">
+            <button
+              onClick={handleBuzz}
+              disabled={!canBuzz || buzzed}
+              className={`relative w-72 h-72 rounded-full border-8 transition-all duration-300 ${
+                !canBuzz || buzzed
+                  ? "opacity-50 cursor-not-allowed border-muted"
+                  : `border-${teamColor} hover:scale-110 active:scale-95 glow-${teamColor}`
+              } ${buzzed ? "animate-buzz" : ""}`}
+              style={{
+                background: `radial-gradient(circle, hsl(var(--${teamColor}) / 0.3), hsl(var(--${teamColor}) / 0.1))`,
+              }}
+            >
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <Zap className={`w-24 h-24 text-${teamColor} ${!canBuzz || buzzed ? "" : "animate-pulse-glow"}`} />
+                <div className={`text-2xl font-bold text-${teamColor} mt-4`}>
+                  {buzzed ? "BUZZED!" : canBuzz ? "BUZZ" : "LOCKED"}
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Status */}
+          <div className="text-center">
+            {gameState?.is_locked && (
+              <div className="text-lg text-muted-foreground">
+                Game is locked. Waiting for admin to unlock...
+              </div>
+            )}
+          </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };
