@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Zap, Users, Trophy } from "lucide-react";
+import logoPng from "../../vibr.png";
 // Footer removed per request
 
 const Index = () => {
@@ -13,7 +14,7 @@ const Index = () => {
           {/* Logo/Title */}
           <div className="space-y-4 animate-fade-in">
             <div className="flex justify-center">
-              <Zap className="w-24 h-24 text-primary animate-pulse-glow" />
+              <img src={logoPng} alt="Vibranium logo" className="mx-auto max-w-[160px] w-full h-auto" />
             </div>
             <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
               VIBRANIUM 5.0
