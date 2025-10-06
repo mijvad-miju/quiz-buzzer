@@ -33,3 +33,4 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.questions;
 GRANT ALL ON public.questions TO authenticated;
 GRANT ALL ON public.questions TO anon;
 
+

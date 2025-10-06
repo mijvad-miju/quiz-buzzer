@@ -46,3 +46,4 @@ SELECT id, question_text, image_url, created_at
 FROM public.questions 
 WHERE question_text = 'Test question with image';
 
+

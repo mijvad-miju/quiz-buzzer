@@ -16,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye, BookOpen } from "lucide-react";
-import Footer from "@/components/Footer";
+// Footer removed per request
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
@@ -734,6 +734,35 @@ const AdminDashboard = () => {
                 {gameState?.current_question || "No question set"}
               </div>
               
+              {/* Team Buzzed First Message */}
+              {gameState?.is_locked && firstBuzzerTeam && (
+                <div className="bg-white/10 border-2 border-white/30 rounded-2xl p-6 animate-buzz">
+                  <div className="flex items-center justify-center gap-4">
+                    <Zap className={`w-12 h-12 text-${TEAM_COLORS[firstBuzzerTeam.team_number - 1]}`} />
+                    <div className="text-center">
+                      <div className="text-3xl md:text-4xl font-bold text-white">
+                        {firstBuzzerTeam.team_name} buzzed first!
+                      </div>
+                      <div className={`text-xl md:text-2xl text-${TEAM_COLORS[firstBuzzerTeam.team_number - 1]}`}>
+                        Team {firstBuzzerTeam.team_number}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Unlock Button */}
+                  <div className="flex justify-center mt-6">
+                    <Button 
+                      onClick={handleUnlock} 
+                      size="lg"
+                      className="bg-green-600/20 border-green-500/50 text-green-200 hover:bg-green-600/30"
+                    >
+                      <Unlock className="w-5 h-5 mr-2" />
+                      Unlock Buzzers
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
               {/* Navigation Controls */}
               {isQuizActive && questions.length > 1 && (
                 <div className="flex justify-center items-center gap-8">
@@ -902,7 +931,7 @@ const AdminDashboard = () => {
         </div>
         </div>
       </div>
-      <Footer />
+      {/* Footer removed */}
     </div>
   );
 };

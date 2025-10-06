@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Zap, ArrowLeft } from "lucide-react";
-import Footer from "@/components/Footer";
+// Footer removed per request
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -149,7 +149,7 @@ const Auth = () => {
           </div>
         </div>
       </div>
-      <Footer />
+      {/* Footer removed */}
     </div>
   );
 };

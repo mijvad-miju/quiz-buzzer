@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Zap, ArrowLeft } from "lucide-react";
-import Footer from "@/components/Footer";
+// Footer removed per request
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
@@ -24,6 +24,16 @@ const BuzzerPage = () => {
       return;
     }
 
+    // Verify this team still exists (may have been deleted by admin)
+    const verifyTeam = async () => {
+      const { data } = await supabase.from("teams").select("id").eq("id", teamId).single();
+      if (!data) {
+        toast({ title: "Team not found", description: "Please register again.", variant: "destructive" });
+        navigate("/register");
+      }
+    };
+    verifyTeam();
+
     fetchGameState();
 
     // Subscribe to game state changes
@@ -42,8 +52,22 @@ const BuzzerPage = () => {
       )
       .subscribe();
 
+    // Subscribe to this team's deletion so we can exit gracefully
+    const teamChannel = supabase
+      .channel(`team-${teamId}`)
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "teams", filter: `id=eq.${teamId}` },
+        () => {
+          toast({ title: "Team removed", description: "Please register again.", variant: "destructive" });
+          navigate("/register");
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(teamChannel);
     };
   }, [teamId, navigate]);
 
@@ -96,7 +120,15 @@ const BuzzerPage = () => {
           team_id: teamId,
         });
 
-      if (error) throw error;
+      if (error) {
+        // Foreign key failure occurs if team no longer exists
+        if ((error as any).code === "23503" || `${error.message}`.includes("buzz_events_team_id_fkey")) {
+          toast({ title: "Team not found", description: "This team was removed. Please register again.", variant: "destructive" });
+          navigate("/register");
+          return;
+        }
+        throw error;
+      }
 
       // Lock the game state
       const { error: updateError } = await supabase
@@ -201,7 +233,7 @@ const BuzzerPage = () => {
           </div>
         </div>
       </div>
-      <Footer />
+      {/* Footer removed */}
     </div>
   );
 };

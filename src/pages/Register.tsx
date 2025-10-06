@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Users } from "lucide-react";
-import Footer from "@/components/Footer";
+// Footer removed per request
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 const TEAM_LABELS = ["Team 1 (Red)", "Team 2 (Blue)", "Team 3 (Green)", "Team 4 (Yellow)"];
@@ -195,7 +195,7 @@ const Register = () => {
           </div>
         </div>
       </div>
-      <Footer />
+      {/* Footer removed */}
     </div>
   );
 };

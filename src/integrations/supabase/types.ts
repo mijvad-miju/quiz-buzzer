@@ -43,26 +43,52 @@ export type Database = {
       game_state: {
         Row: {
           current_question: string | null
+          current_question_id: string | null
+          current_session_id: string | null
           first_buzzer_team_id: string | null
           id: string
+          image_url: string | null
           is_locked: boolean | null
+          session_question_index: number | null
           updated_at: string | null
         }
         Insert: {
           current_question?: string | null
+          current_question_id?: string | null
+          current_session_id?: string | null
           first_buzzer_team_id?: string | null
           id?: string
+          image_url?: string | null
           is_locked?: boolean | null
+          session_question_index?: number | null
           updated_at?: string | null
         }
         Update: {
           current_question?: string | null
+          current_question_id?: string | null
+          current_session_id?: string | null
           first_buzzer_team_id?: string | null
           id?: string
+          image_url?: string | null
           is_locked?: boolean | null
+          session_question_index?: number | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "game_state_current_session_id_fkey"
+            columns: ["current_session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_state_current_question_id_fkey"
+            columns: ["current_question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "game_state_first_buzzer_team_id_fkey"
             columns: ["first_buzzer_team_id"]
@@ -116,6 +142,125 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      sessions: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          is_completed: boolean | null
+          session_name: string
+          session_number: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_completed?: boolean | null
+          session_name: string
+          session_number: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_completed?: boolean | null
+          session_name?: string
+          session_number?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      questions: {
+        Row: {
+          created_at: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          order_index: number
+          question_text: string
+          session_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          order_index?: number
+          question_text: string
+          session_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          order_index?: number
+          question_text?: string
+          session_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_scores: {
+        Row: {
+          correct_answers: number | null
+          created_at: string | null
+          id: string
+          questions_answered: number | null
+          score: number | null
+          session_id: string | null
+          team_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          correct_answers?: number | null
+          created_at?: string | null
+          id?: string
+          questions_answered?: number | null
+          score?: number | null
+          session_id?: string | null
+          team_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          correct_answers?: number | null
+          created_at?: string | null
+          id?: string
+          questions_answered?: number | null
+          score?: number | null
+          session_id?: string | null
+          team_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_scores_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_scores_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

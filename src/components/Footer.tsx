@@ -6,8 +6,7 @@ const Footer = () => {
       <div className="container mx-auto px-4">
         <div className="flex justify-center items-center">
           <p className="text-sm text-muted-foreground">
-            Provided by{' '}
-            <span className="font-semibold text-foreground">Elevates</span>
+            {/* Intentionally left blank as per request */}
           </p>
         </div>
       </div>

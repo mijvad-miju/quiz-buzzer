@@ -94,3 +94,4 @@ The code now includes console logging. Check browser console for:
 3. **Fullscreen**: Images should display above question text
 4. **Participant View**: Images should show on buzzer page
 
+

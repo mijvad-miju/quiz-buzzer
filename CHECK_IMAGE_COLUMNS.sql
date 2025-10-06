@@ -26,3 +26,4 @@ SELECT id, current_question, image_url, is_locked
 FROM public.game_state 
 LIMIT 1;
 
+

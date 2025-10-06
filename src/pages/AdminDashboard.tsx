@@ -15,8 +15,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye } from "lucide-react";
-import Footer from "@/components/Footer";
+import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye, BookOpen, Users } from "lucide-react";
+// Footer removed per request
+import LeaderboardPopup from "@/components/LeaderboardPopup";
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
@@ -44,6 +45,16 @@ const AdminDashboard = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isQuizActive, setIsQuizActive] = useState(false);
   const [showQuestionManager, setShowQuestionManager] = useState(true);
+  
+  // Session management state
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [currentSession, setCurrentSession] = useState<any>(null);
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  const [newSessionName, setNewSessionName] = useState("");
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [completedSessionId, setCompletedSessionId] = useState<string | null>(null);
+  const [completedSessionName, setCompletedSessionName] = useState("");
+  
 
   useEffect(() => {
     // Check auth
@@ -81,6 +92,7 @@ const AdminDashboard = () => {
     fetchGameState();
     fetchTeams();
     fetchQuestions();
+    fetchSessions();
 
     // Subscribe to real-time updates
     const gameChannel = supabase
@@ -244,6 +256,22 @@ const AdminDashboard = () => {
 
   const handleDeleteTeam = async (teamId: string, teamName: string) => {
     try {
+      // Clear references in buzz_events first to avoid FK errors
+      const { error: buzzErr } = await supabase
+        .from("buzz_events")
+        .delete()
+        .eq("team_id", teamId);
+      if (buzzErr) throw buzzErr;
+
+      // If this team is currently set as first buzzer, clear it
+      if (gameState?.first_buzzer_team_id === teamId) {
+        const { error: gsErr } = await supabase
+          .from("game_state")
+          .update({ first_buzzer_team_id: null, is_locked: false })
+          .eq("id", gameState.id);
+        if (gsErr) throw gsErr;
+      }
+
       const { error } = await supabase
         .from("teams")
         .delete()
@@ -346,6 +374,26 @@ const AdminDashboard = () => {
       return;
     }
 
+    if (!currentSession) {
+      toast({
+        title: "Error",
+        description: "Please select a session first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if session already has 20 questions
+    const sessionQuestions = questions.filter(q => q.session_id === currentSession.id);
+    if (sessionQuestions.length >= 20) {
+      toast({
+        title: "Session Full",
+        description: "This session already has the maximum of 20 questions",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       console.log('Saving question:', question.trim());
       console.log('Saving image_url:', imageUrl);
@@ -353,8 +401,10 @@ const AdminDashboard = () => {
       const { error } = await supabase
         .from("questions")
         .insert({
+          session_id: currentSession.id,
           question_text: question.trim(),
           image_url: imageUrl || null,
+          order_index: sessionQuestions.length + 1,
         });
 
       if (error) throw error;
@@ -363,7 +413,7 @@ const AdminDashboard = () => {
 
       toast({
         title: "Question saved!",
-        description: "Question has been added to your quiz.",
+        description: "Question has been added to the session.",
       });
 
       // Clear form
@@ -519,10 +569,168 @@ const AdminDashboard = () => {
     }
   }, [isFullscreen]);
 
+  // Check for session completion
+  useEffect(() => {
+    if (currentSession && isQuizActive) {
+      const interval = setInterval(checkSessionCompletion, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [currentSession, isQuizActive]);
+
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/");
   };
+
+  // Session management functions
+  const fetchSessions = async () => {
+    const { data } = await supabase
+      .from("sessions")
+      .select("*")
+      .order("session_number", { ascending: true });
+    if (data) setSessions(data);
+  };
+
+  const createSession = async () => {
+    if (!newSessionName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a session name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const nextSessionNumber = sessions.length + 1;
+      const { data, error } = await supabase
+        .from("sessions")
+        .insert({
+          session_name: newSessionName,
+          session_number: nextSessionNumber,
+          is_active: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setSessions([...sessions, data]);
+      setNewSessionName("");
+      toast({
+        title: "Session Created",
+        description: `Session "${newSessionName}" has been created`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const activateSession = async (sessionId: string) => {
+    try {
+      // Deactivate all other sessions
+      await supabase
+        .from("sessions")
+        .update({ is_active: false })
+        .neq("id", sessionId);
+
+      // Activate the selected session
+      const { error } = await supabase
+        .from("sessions")
+        .update({ is_active: true })
+        .eq("id", sessionId);
+
+      if (error) throw error;
+
+      // Update game state with current session
+      const { error: gameStateError } = await supabase
+        .from("game_state")
+        .update({ current_session_id: sessionId })
+        .eq("id", gameState.id);
+
+      if (gameStateError) throw gameStateError;
+
+      // Fetch updated sessions and questions
+      await fetchSessions();
+      await fetchQuestions();
+      
+      setCurrentSession(sessions.find(s => s.id === sessionId));
+      
+      toast({
+        title: "Session Activated",
+        description: "Session is now active",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deactivateSession = async (sessionId: string) => {
+    try {
+      // Deactivate the selected session
+      const { error } = await supabase
+        .from("sessions")
+        .update({ is_active: false })
+        .eq("id", sessionId);
+
+      if (error) throw error;
+
+      // If game_state currently points to this session, clear it
+      if (gameState?.current_session_id === sessionId) {
+        const { error: gsError } = await supabase
+          .from("game_state")
+          .update({
+            current_session_id: null,
+            current_question_id: null,
+            current_question: null,
+            image_url: null,
+            session_question_index: 0,
+            is_locked: false,
+            first_buzzer_team_id: null,
+          })
+          .eq("id", gameState.id);
+
+        if (gsError) throw gsError;
+      }
+
+      await fetchSessions();
+      toast({ title: "Session Deactivated", description: "This session is no longer active." });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const checkSessionCompletion = async () => {
+    if (!currentSession) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("is_completed")
+        .eq("id", currentSession.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data.is_completed) {
+        setCompletedSessionId(currentSession.id);
+        setCompletedSessionName(currentSession.session_name);
+        setShowLeaderboard(true);
+      }
+    } catch (error: any) {
+      console.error("Error checking session completion:", error);
+    }
+  };
+
 
   const firstBuzzerTeam = teams.find((t) => t.id === gameState?.first_buzzer_team_id);
 
@@ -542,239 +750,143 @@ const AdminDashboard = () => {
           </Button>
         </div>
 
-        {/* Question Management */}
-        <div className="bg-card border-2 border-primary rounded-2xl p-6 space-y-4">
+        {/* Session Management */}
+        <div className="bg-card border-2 border-secondary rounded-2xl p-6 space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Question Management</h2>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <BookOpen className="w-6 h-6" />
+              Session Management
+            </h2>
             <div className="flex gap-2">
               <Button 
-                onClick={() => setShowQuestionManager(!showQuestionManager)} 
+                onClick={() => setShowSessionManager(!showSessionManager)} 
                 variant="outline" 
                 size="sm"
               >
                 <Eye className="w-4 h-4 mr-2" />
-                {showQuestionManager ? "Hide" : "Show"} Questions
-              </Button>
-              <Button onClick={toggleFullscreen} variant="outline" size="sm">
-                {isFullscreen ? (
-                  <>
-                    <Minimize className="w-4 h-4 mr-2" />
-                    Exit Fullscreen
-                  </>
-                ) : (
-                  <>
-                    <Maximize className="w-4 h-4 mr-2" />
-                    Show Fullscreen
-                  </>
-                )}
+                {showSessionManager ? "Hide" : "Show"} Sessions
               </Button>
             </div>
           </div>
-          <div className="space-y-4">
-            <div className="flex gap-4">
-              <Input
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Enter question..."
-                className="flex-1"
-              />
-              <Button onClick={saveQuestion} className="px-8">
-                <Save className="w-4 h-4 mr-2" />
-                Save Question
-              </Button>
-            </div>
+
+          {showSessionManager && (
             <div className="space-y-4">
-              {/* Image Upload Section */}
-              <div className="flex gap-4 items-center">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium mb-2">Add Image (Optional)</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      id="image-upload"
-                    />
-                    <label
-                      htmlFor="image-upload"
-                      className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                    >
-                      <Upload className="w-4 h-4" />
-                      Choose File
-                    </label>
-                    {selectedFile && (
-                      <Button
-                        onClick={uploadImage}
-                        disabled={uploading}
-                        size="sm"
-                        className="px-4"
-                      >
-                        {uploading ? "Uploading..." : "Upload"}
-                      </Button>
-                    )}
-                  </div>
-                  {selectedFile && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Selected: {selectedFile.name}
-                    </p>
-                  )}
-                </div>
-                
-                {/* Image Preview */}
-                {(imageUrl || selectedFile) && (
-                  <div className="flex items-center gap-2">
-                    <img 
-                      src={imageUrl || (selectedFile ? URL.createObjectURL(selectedFile) : '')} 
-                      alt="Question preview" 
-                      className="w-16 h-16 object-cover rounded-lg border"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                    <Button
-                      onClick={clearImage}
-                      variant="outline"
-                      size="sm"
-                      className="px-2"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-              
-              {/* Alternative: Image URL Input */}
-              <div className="flex gap-4">
+              {/* Create New Session */}
+              <div className="flex gap-2">
                 <Input
-                  value={imageUrl}
-                  onChange={(e) => {
-                    setImageUrl(e.target.value);
-                    setSelectedFile(null); // Clear file when URL is entered
-                  }}
-                  placeholder="Or enter image URL directly..."
+                  placeholder="Enter session name..."
+                  value={newSessionName}
+                  onChange={(e) => setNewSessionName(e.target.value)}
                   className="flex-1"
                 />
+                <Button onClick={createSession} disabled={!newSessionName.trim()}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Session
+                </Button>
               </div>
-            </div>
-          </div>
 
-          {/* Quiz Controls */}
-          <div className="border-t pt-4">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex gap-2">
-                {!isQuizActive ? (
-                  <Button onClick={startQuiz} className="px-6">
-                    <Play className="w-4 h-4 mr-2" />
-                    Start Quiz
-                  </Button>
-                ) : (
-                  <>
-                    <Button onClick={endQuiz} variant="destructive" className="px-6">
-                      <Pause className="w-4 h-4 mr-2" />
-                      End Quiz
-                    </Button>
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        onClick={previousQuestion} 
-                        disabled={currentQuestionIndex === 0}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        {currentQuestionIndex + 1} of {questions.length}
-                      </span>
-                      <Button 
-                        onClick={nextQuestion} 
-                        disabled={currentQuestionIndex === questions.length - 1}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {questions.length} questions saved
-              </div>
-            </div>
-          </div>
-
-          {/* Question List */}
-          {showQuestionManager && (
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold mb-3">Saved Questions</h3>
-              {questions.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">
-                  No questions saved yet. Add your first question above!
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {questions.map((q, index) => (
-                    <div 
-                      key={q.id} 
-                      className={`flex items-center justify-between p-3 rounded-lg border ${
-                        currentQuestionIndex === index && isQuizActive 
-                          ? 'border-primary bg-primary/10' 
-                          : 'border-border'
-                      }`}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            {index + 1}.
-                          </span>
-                          <span className="text-sm">{q.question_text}</span>
-                          {q.image_url && (
-                            <span className="text-xs text-muted-foreground">📷</span>
-                          )}
-                        </div>
+              {/* Current Session */}
+              {currentSession && (
+                <div className="bg-green-100 border-2 border-green-300 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-lg font-semibold text-green-800">
+                        Active Session: {currentSession.session_name}
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          onClick={() => displayQuestion(q)}
-                          variant="outline"
-                          size="sm"
-                          className="px-2"
-                        >
-                          <Eye className="w-3 h-3" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="px-2">
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Question</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete this question? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteQuestion(q.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Delete Question
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                      <div className="text-sm text-green-600">
+                        Session #{currentSession.session_number}
                       </div>
                     </div>
-                  ))}
+                    <div className="text-sm text-green-600">
+                      {questions.filter(q => q.session_id === currentSession.id).length}/20 questions
+                    </div>
+                  </div>
                 </div>
               )}
+
+              {/* Sessions List */}
+              <div className="space-y-4">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`p-4 rounded-lg border-2 ${
+                      session.is_active
+                        ? "border-green-500 bg-green-50"
+                        : session.is_completed
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-300 bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-semibold text-lg">{session.session_name}</h3>
+                        <p className="text-sm text-gray-600">Session #{session.session_number}</p>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {questions.filter(q => q.session_id === session.id).length}/20 questions
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {session.is_active && (
+                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">Active</span>
+                        )}
+                        {session.is_completed && (
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">Completed</span>
+                        )}
+                        <Button
+                          onClick={() => navigate(`/admin/session/${session.id}`)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Session Actions */}
+                    <div className="flex gap-2 mb-4">
+                      {!session.is_completed && !session.is_active && (
+                        <Button
+                          onClick={() => activateSession(session.id)}
+                          size="sm"
+                          variant="default"
+                        >
+                          Activate
+                        </Button>
+                      )}
+
+                      {session.is_active && (
+                        <>
+                          <Button
+                            onClick={() => deactivateSession(session.id)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Deactivate
+                          </Button>
+
+                          {questions.filter(q => q.session_id === session.id).length > 0 && (
+                            <Button
+                              onClick={() => startSessionQuiz(session.id)}
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700"
+                            >
+                              <Play className="w-4 h-4 mr-2" />
+                              Start Quiz
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
+
+        
 
         {/* Fullscreen Question Display */}
         {isFullscreen && (
@@ -802,6 +914,35 @@ const AdminDashboard = () => {
               <div className="text-white text-4xl md:text-6xl lg:text-8xl font-bold leading-tight">
                 {gameState?.current_question || "No question set"}
               </div>
+              
+              {/* Team Buzzed First Message */}
+              {gameState?.is_locked && firstBuzzerTeam && (
+                <div className="bg-white/10 border-2 border-white/30 rounded-2xl p-6 animate-buzz">
+                  <div className="flex items-center justify-center gap-4">
+                    <Zap className={`w-12 h-12 text-${TEAM_COLORS[firstBuzzerTeam.team_number - 1]}`} />
+                    <div className="text-center">
+                      <div className="text-3xl md:text-4xl font-bold text-white">
+                        {firstBuzzerTeam.team_name} buzzed first!
+                      </div>
+                      <div className={`text-xl md:text-2xl text-${TEAM_COLORS[firstBuzzerTeam.team_number - 1]}`}>
+                        Team {firstBuzzerTeam.team_number}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Unlock Button */}
+                  <div className="flex justify-center mt-6">
+                    <Button 
+                      onClick={handleUnlock} 
+                      size="lg"
+                      className="bg-green-600/20 border-green-500/50 text-green-200 hover:bg-green-600/30"
+                    >
+                      <Unlock className="w-5 h-5 mr-2" />
+                      Unlock Buzzers
+                    </Button>
+                  </div>
+                </div>
+              )}
               
               {/* Navigation Controls */}
               {isQuizActive && questions.length > 1 && (
@@ -971,7 +1112,21 @@ const AdminDashboard = () => {
         </div>
         </div>
       </div>
-      <Footer />
+      {/* Footer removed */}
+      
+      {/* Leaderboard Popup */}
+      {showLeaderboard && completedSessionId && (
+        <LeaderboardPopup
+          isOpen={showLeaderboard}
+          onClose={() => {
+            setShowLeaderboard(false);
+            setCompletedSessionId(null);
+            setCompletedSessionName("");
+          }}
+          sessionId={completedSessionId}
+          sessionName={completedSessionName}
+        />
+      )}
     </div>
   );
 };

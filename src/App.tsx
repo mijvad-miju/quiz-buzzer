@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Register from "./pages/Register";
 import BuzzerPage from "./pages/BuzzerPage";
 import AdminDashboard from "./pages/AdminDashboard";
+import SessionManagement from "./pages/SessionManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/register" element={<Register />} />
           <Route path="/buzzer" element={<BuzzerPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/session/:sessionId" element={<SessionManagement />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
