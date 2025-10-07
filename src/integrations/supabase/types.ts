@@ -49,8 +49,10 @@ export type Database = {
           id: string
           image_url: string | null
           is_locked: boolean | null
+          quiz_ended: boolean | null
           session_question_index: number | null
           updated_at: string | null
+          winner_team_id: string | null
         }
         Insert: {
           current_question?: string | null
@@ -60,8 +62,10 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_locked?: boolean | null
+          quiz_ended?: boolean | null
           session_question_index?: number | null
           updated_at?: string | null
+          winner_team_id?: string | null
         }
         Update: {
           current_question?: string | null
@@ -71,8 +75,10 @@ export type Database = {
           id?: string
           image_url?: string | null
           is_locked?: boolean | null
+          quiz_ended?: boolean | null
           session_question_index?: number | null
           updated_at?: string | null
+          winner_team_id?: string | null
         }
         Relationships: [
           {
@@ -92,6 +98,13 @@ export type Database = {
           {
             foreignKeyName: "game_state_first_buzzer_team_id_fkey"
             columns: ["first_buzzer_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_state_winner_team_id_fkey"
+            columns: ["winner_team_id"]
             isOneToOne: false
             referencedRelation: "teams"
             referencedColumns: ["id"]

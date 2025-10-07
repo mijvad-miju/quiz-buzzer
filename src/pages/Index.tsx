@@ -1,14 +1,113 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Zap, Users, Trophy } from "lucide-react";
+import { Zap, Users, Trophy, BarChart3 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import WinnerPopup from "@/components/WinnerPopup";
+import ScoreboardPopup from "@/components/ScoreboardPopup";
 import logoPng from "../../vibr.png";
 // Footer removed per request
 
 const Index = () => {
   const navigate = useNavigate();
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  const [winnerTeam, setWinnerTeam] = useState<any>(null);
+  const [gameState, setGameState] = useState<any>(null);
+  const [showScoreboard, setShowScoreboard] = useState(false);
+  const [teams, setTeams] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchGameState();
+    fetchTeams();
+
+    // Subscribe to game state changes
+    const channel = supabase
+      .channel("index-game-state-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_state",
+        },
+        () => {
+          fetchGameState();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to teams changes for scoreboard
+    const teamsChannel = supabase
+      .channel("index-teams")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teams" },
+        () => fetchTeams()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(teamsChannel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (gameState?.quiz_ended && gameState?.winner_team_id) {
+      fetchWinnerTeam(gameState.winner_team_id);
+    }
+  }, [gameState]);
+
+  const fetchGameState = async () => {
+    const { data, error } = await supabase
+      .from("game_state")
+      .select("*")
+      .single();
+
+    if (!error && data) {
+      setGameState(data);
+    }
+  };
+
+  const fetchWinnerTeam = async (winnerTeamId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("*")
+        .eq("id", winnerTeamId)
+        .single();
+
+      if (!error && data) {
+        setWinnerTeam(data);
+        setShowWinnerPopup(true);
+      }
+    } catch (error) {
+      console.error("Error fetching winner team:", error);
+    }
+  };
+
+  const fetchTeams = async () => {
+    const { data } = await supabase
+      .from("teams")
+      .select("*")
+      .order("team_number");
+    if (data) setTeams(data);
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Check Results Button */}
+      <div className="absolute top-4 right-4">
+        <Button
+          variant="outline"
+          onClick={() => setShowScoreboard(true)}
+          size="sm"
+        >
+          <BarChart3 className="w-4 h-4 mr-2" />
+          Check Results
+        </Button>
+      </div>
+      
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="max-w-4xl w-full text-center space-y-12">
           {/* Logo/Title */}
@@ -65,6 +164,23 @@ const Index = () => {
         </div>
       </div>
       {/* Footer removed */}
+      
+      {/* Winner Popup */}
+      <WinnerPopup
+        isOpen={showWinnerPopup}
+        onClose={() => {
+          setShowWinnerPopup(false);
+          setWinnerTeam(null);
+        }}
+        winnerTeam={winnerTeam}
+      />
+
+      {/* Scoreboard Popup */}
+      <ScoreboardPopup
+        isOpen={showScoreboard}
+        onClose={() => setShowScoreboard(false)}
+        teams={teams}
+      />
     </div>
   );
 };

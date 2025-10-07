@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Zap, ArrowLeft } from "lucide-react";
+import { Zap, ArrowLeft, BarChart3 } from "lucide-react";
+import WinnerPopup from "@/components/WinnerPopup";
+import ScoreboardPopup from "@/components/ScoreboardPopup";
 // Footer removed per request
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
@@ -17,6 +19,10 @@ const BuzzerPage = () => {
   const [gameState, setGameState] = useState<any>(null);
   const [canBuzz, setCanBuzz] = useState(true);
   const [buzzed, setBuzzed] = useState(false);
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  const [winnerTeam, setWinnerTeam] = useState<any>(null);
+  const [showScoreboard, setShowScoreboard] = useState(false);
+  const [teams, setTeams] = useState<any[]>([]);
 
   useEffect(() => {
     if (!teamId) {
@@ -35,6 +41,7 @@ const BuzzerPage = () => {
     verifyTeam();
 
     fetchGameState();
+    fetchTeams();
 
     // Subscribe to game state changes
     const channel = supabase
@@ -65,9 +72,20 @@ const BuzzerPage = () => {
       )
       .subscribe();
 
+    // Subscribe to teams changes for scoreboard
+    const teamsChannel = supabase
+      .channel("buzzer-teams")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teams" },
+        () => fetchTeams()
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(teamChannel);
+      supabase.removeChannel(teamsChannel);
     };
   }, [teamId, navigate]);
 
@@ -77,6 +95,11 @@ const BuzzerPage = () => {
       // Reset buzzed state when game is unlocked
       if (!gameState.is_locked) {
         setBuzzed(false);
+      }
+      
+      // Check if quiz has ended and show winner
+      if (gameState.quiz_ended && gameState.winner_team_id) {
+        fetchWinnerTeam(gameState.winner_team_id);
       }
     }
   }, [gameState]);
@@ -90,6 +113,31 @@ const BuzzerPage = () => {
     if (!error && data) {
       setGameState(data);
     }
+  };
+
+  const fetchWinnerTeam = async (winnerTeamId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("*")
+        .eq("id", winnerTeamId)
+        .single();
+
+      if (!error && data) {
+        setWinnerTeam(data);
+        setShowWinnerPopup(true);
+      }
+    } catch (error) {
+      console.error("Error fetching winner team:", error);
+    }
+  };
+
+  const fetchTeams = async () => {
+    const { data } = await supabase
+      .from("teams")
+      .select("*")
+      .order("team_number");
+    if (data) setTeams(data);
   };
 
   const handleBuzz = async () => {
@@ -160,14 +208,23 @@ const BuzzerPage = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/register")}
-          className="absolute top-4 left-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Leave Game
-        </Button>
+        <div className="absolute top-4 left-4 flex gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/register")}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Leave Game
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowScoreboard(true)}
+            size="sm"
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Check Results
+          </Button>
+        </div>
 
         <div className="w-full max-w-2xl space-y-8">
           {/* Team Info */}
@@ -234,6 +291,23 @@ const BuzzerPage = () => {
         </div>
       </div>
       {/* Footer removed */}
+      
+      {/* Winner Popup */}
+      <WinnerPopup
+        isOpen={showWinnerPopup}
+        onClose={() => {
+          setShowWinnerPopup(false);
+          setWinnerTeam(null);
+        }}
+        winnerTeam={winnerTeam}
+      />
+
+      {/* Scoreboard Popup */}
+      <ScoreboardPopup
+        isOpen={showScoreboard}
+        onClose={() => setShowScoreboard(false)}
+        teams={teams}
+      />
     </div>
   );
 };

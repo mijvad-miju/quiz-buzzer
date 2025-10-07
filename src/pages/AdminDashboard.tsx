@@ -15,9 +15,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye, BookOpen, Users } from "lucide-react";
+import { LogOut, Zap, Trophy, Plus, Minus, RotateCcw, Unlock, Trash2, Maximize, Minimize, Upload, X, Play, Pause, ChevronLeft, ChevronRight, Save, Edit, Eye, BookOpen, Users, Flag, BarChart3 } from "lucide-react";
 // Footer removed per request
 import LeaderboardPopup from "@/components/LeaderboardPopup";
+import WinnerPopup from "@/components/WinnerPopup";
+import ScoreboardPopup from "@/components/ScoreboardPopup";
 
 const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
@@ -54,6 +56,13 @@ const AdminDashboard = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [completedSessionId, setCompletedSessionId] = useState<string | null>(null);
   const [completedSessionName, setCompletedSessionName] = useState("");
+  
+  // Winner announcement state
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  const [winnerTeam, setWinnerTeam] = useState<any>(null);
+  
+  // Scoreboard state
+  const [showScoreboard, setShowScoreboard] = useState(false);
   
 
   useEffect(() => {
@@ -231,23 +240,37 @@ const AdminDashboard = () => {
       // Delete all teams
       await supabase.from("teams").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       
-      // Reset game state
+      // Reset game state completely
       await supabase
         .from("game_state")
         .update({ 
           current_question: "Welcome to the Quiz!",
           image_url: null,
           is_locked: false,
-          first_buzzer_team_id: null
+          first_buzzer_team_id: null,
+          winner_team_id: null,
+          quiz_ended: false
         })
         .eq("id", gameState.id);
 
       // Clear buzz events
       await supabase.from("buzz_events").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       
+      // Reset local state
       setBuzzEvents([]);
       setImageUrl("");
       setSelectedFile(null);
+      setShowWinnerPopup(false);
+      setWinnerTeam(null);
+      setIsQuizActive(false);
+      setCurrentQuestionIndex(0);
+      setIsFullscreen(false);
+      
+      // Refresh data
+      await fetchGameState();
+      await fetchTeams();
+      await fetchQuestions();
+      
       toast({ title: "Game reset successfully!" });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -263,14 +286,17 @@ const AdminDashboard = () => {
         .eq("team_id", teamId);
       if (buzzErr) throw buzzErr;
 
-      // If this team is currently set as first buzzer, clear it
-      if (gameState?.first_buzzer_team_id === teamId) {
-        const { error: gsErr } = await supabase
-          .from("game_state")
-          .update({ first_buzzer_team_id: null, is_locked: false })
-          .eq("id", gameState.id);
-        if (gsErr) throw gsErr;
-      }
+      // Clear all references to this team in game_state
+      const { error: gsErr } = await supabase
+        .from("game_state")
+        .update({ 
+          first_buzzer_team_id: gameState?.first_buzzer_team_id === teamId ? null : gameState?.first_buzzer_team_id,
+          winner_team_id: gameState?.winner_team_id === teamId ? null : gameState?.winner_team_id,
+          is_locked: gameState?.first_buzzer_team_id === teamId ? false : gameState?.is_locked,
+          quiz_ended: gameState?.winner_team_id === teamId ? false : gameState?.quiz_ended
+        })
+        .eq("id", gameState.id);
+      if (gsErr) throw gsErr;
 
       const { error } = await supabase
         .from("teams")
@@ -731,6 +757,63 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleEndQuiz = async () => {
+    if (teams.length === 0) {
+      toast({
+        title: "No teams",
+        description: "There are no teams to determine a winner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Find the team with the highest score
+      const winner = teams.reduce((prev, current) => 
+        (prev.score > current.score) ? prev : current
+      );
+
+      // Check if there's a tie
+      const topScore = winner.score;
+      const tiedTeams = teams.filter(team => team.score === topScore);
+      
+      if (tiedTeams.length > 1) {
+        toast({
+          title: "Tie detected!",
+          description: `Multiple teams have ${topScore} points. The first team registered wins.`,
+        });
+      }
+
+      // Set winner in game state to broadcast to all participants
+      const { error } = await supabase
+        .from("game_state")
+        .update({ 
+          winner_team_id: winner.id,
+          quiz_ended: true,
+          current_question: "Quiz Ended - Check Results!"
+        })
+        .eq("id", gameState.id);
+
+      if (error) throw error;
+
+      // Show winner popup
+      setWinnerTeam(winner);
+      setShowWinnerPopup(true);
+
+      toast({
+        title: "Quiz Ended!",
+        description: `${winner.team_name} wins with ${winner.score} points!`,
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
 
   const firstBuzzerTeam = teams.find((t) => t.id === gameState?.first_buzzer_team_id);
 
@@ -1031,10 +1114,20 @@ const AdminDashboard = () => {
               <Trophy className="w-6 h-6" />
               Teams & Scores
             </h2>
-            <Button onClick={handleResetGame} variant="destructive" size="sm">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset Game
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowScoreboard(true)} variant="outline" size="sm">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Check Results
+              </Button>
+              <Button onClick={handleEndQuiz} variant="default" size="sm" className="bg-green-600 hover:bg-green-700">
+                <Flag className="w-4 h-4 mr-2" />
+                End Quiz
+              </Button>
+              <Button onClick={handleResetGame} variant="destructive" size="sm">
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reset Game
+              </Button>
+            </div>
           </div>
 
           {teams.length === 0 ? (
@@ -1127,6 +1220,23 @@ const AdminDashboard = () => {
           sessionName={completedSessionName}
         />
       )}
+
+      {/* Winner Popup */}
+      <WinnerPopup
+        isOpen={showWinnerPopup}
+        onClose={() => {
+          setShowWinnerPopup(false);
+          setWinnerTeam(null);
+        }}
+        winnerTeam={winnerTeam}
+      />
+
+      {/* Scoreboard Popup */}
+      <ScoreboardPopup
+        isOpen={showScoreboard}
+        onClose={() => setShowScoreboard(false)}
+        teams={teams}
+      />
     </div>
   );
 };
