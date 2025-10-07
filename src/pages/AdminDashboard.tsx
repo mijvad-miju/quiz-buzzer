@@ -129,21 +129,28 @@ const AdminDashboard = () => {
         { event: "INSERT", schema: "public", table: "buzz_events" },
         (payload) => {
           setBuzzEvents((prev) => [payload.new, ...prev]);
-          // Play notification sound
-          const audio = new Audio();
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.frequency.value = 880;
-          oscillator.type = "sine";
-          gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-          
-          oscillator.start();
-          setTimeout(() => oscillator.stop(), 100);
+          // Play notification sound from MP3 file
+          try {
+            const audio = new Audio('/buzzer-sound.mp3');
+            audio.volume = 0.5; // Set volume to 50% for admin notification
+            audio.play();
+          } catch (error) {
+            console.error('Error playing admin buzzer sound:', error);
+            // Fallback to system beep if audio fails
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 880;
+            oscillator.type = "sine";
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            
+            oscillator.start();
+            setTimeout(() => oscillator.stop(), 100);
+          }
         }
       )
       .subscribe();
@@ -224,9 +231,12 @@ const AdminDashboard = () => {
     if (!team) return;
 
     try {
+      const currentScore = typeof team.score === 'number' && !isNaN(team.score) ? team.score : 0;
+      const newScore = Math.max(0, currentScore + change);
+
       const { error } = await supabase
         .from("teams")
-        .update({ score: Math.max(0, team.score + change) })
+        .update({ score: newScore })
         .eq("id", teamId);
 
       if (error) throw error;
@@ -237,24 +247,22 @@ const AdminDashboard = () => {
 
   const handleResetGame = async () => {
     try {
-      // Delete all teams
-      await supabase.from("teams").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      
-      // Reset game state completely
+      // 1) Clear buzz events first (they reference team_id)
+      await supabase.from("buzz_events").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+      // 2) Reset game state and clear references to teams
       await supabase
         .from("game_state")
         .update({ 
           current_question: "Welcome to the Quiz!",
           image_url: null,
           is_locked: false,
-          first_buzzer_team_id: null,
-          winner_team_id: null,
-          quiz_ended: false
+          first_buzzer_team_id: null
         })
         .eq("id", gameState.id);
 
-      // Clear buzz events
-      await supabase.from("buzz_events").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      // 3) Delete all teams after references are cleared
+      await supabase.from("teams").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       
       // Reset local state
       setBuzzEvents([]);
@@ -286,17 +294,26 @@ const AdminDashboard = () => {
         .eq("team_id", teamId);
       if (buzzErr) throw buzzErr;
 
-      // Clear all references to this team in game_state
-      const { error: gsErr } = await supabase
-        .from("game_state")
-        .update({ 
-          first_buzzer_team_id: gameState?.first_buzzer_team_id === teamId ? null : gameState?.first_buzzer_team_id,
-          winner_team_id: gameState?.winner_team_id === teamId ? null : gameState?.winner_team_id,
-          is_locked: gameState?.first_buzzer_team_id === teamId ? false : gameState?.is_locked,
-          quiz_ended: gameState?.winner_team_id === teamId ? false : gameState?.quiz_ended
-        })
-        .eq("id", gameState.id);
-      if (gsErr) throw gsErr;
+      // If this team is currently set as first buzzer, clear it
+      if (gameState?.first_buzzer_team_id === teamId) {
+        const { error: gsErr } = await supabase
+          .from("game_state")
+          .update({ first_buzzer_team_id: null, is_locked: false })
+          .eq("id", gameState.id);
+        if (gsErr) throw gsErr;
+      }
+
+      // Clear winner reference in any game_state rows that point to this team
+      {
+        const { error: clearWinnerErr } = await supabase
+          .from("game_state")
+          .update({ winner_team_id: null, quiz_ended: false })
+          .eq("winner_team_id", teamId);
+        if (clearWinnerErr && (clearWinnerErr as any).code !== undefined) {
+          // If these columns don't exist in this DB schema, ignore the error
+          // and proceed with deletion. This keeps compatibility with older schemas.
+        }
+      }
 
       const { error } = await supabase
         .from("teams")
@@ -785,16 +802,29 @@ const AdminDashboard = () => {
       }
 
       // Set winner in game state to broadcast to all participants
-      const { error } = await supabase
-        .from("game_state")
-        .update({ 
-          winner_team_id: winner.id,
-          quiz_ended: true,
-          current_question: "Quiz Ended - Check Results!"
-        })
-        .eq("id", gameState.id);
-
-      if (error) throw error;
+      // Prefer winner_team_id/quiz_ended if columns exist; otherwise fall back to message only
+      let updateErr: any = null;
+      try {
+        const { error } = await supabase
+          .from("game_state")
+          .update({ 
+            winner_team_id: winner.id,
+            quiz_ended: true,
+            current_question: "Quiz Ended - Check Results!"
+          })
+          .eq("id", gameState.id);
+        updateErr = error;
+      } catch (e) {
+        updateErr = e;
+      }
+      if (updateErr) {
+        // Fallback for schemas without these columns
+        const { error: fallbackErr } = await supabase
+          .from("game_state")
+          .update({ current_question: "Quiz Ended - Check Results!" })
+          .eq("id", gameState.id);
+        if (fallbackErr) throw fallbackErr;
+      }
 
       // Show winner popup
       setWinnerTeam(winner);

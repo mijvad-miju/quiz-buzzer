@@ -53,10 +53,17 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    if (gameState?.quiz_ended && gameState?.winner_team_id) {
-      fetchWinnerTeam(gameState.winner_team_id);
+    // Winner popup logic: prefer explicit winner_team_id; fallback to top scorer when end message is set
+    if ((gameState as any)?.winner_team_id) {
+      fetchWinnerTeam((gameState as any).winner_team_id);
+    } else if (gameState?.current_question === "Quiz Ended - Check Results!" && teams.length > 0) {
+      const winner = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+      if (winner) {
+        setWinnerTeam(winner);
+        setShowWinnerPopup(true);
+      }
     }
-  }, [gameState]);
+  }, [gameState, teams]);
 
   const fetchGameState = async () => {
     const { data, error } = await supabase

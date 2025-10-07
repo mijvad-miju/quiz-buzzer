@@ -33,6 +33,7 @@ import {
   Zap,
   Unlock
 } from "lucide-react";
+import WinnerPopup from "@/components/WinnerPopup";
 // Footer removed per request
 
 const SessionManagement = () => {
@@ -61,6 +62,10 @@ const SessionManagement = () => {
   const [recentBuzzTeam, setRecentBuzzTeam] = useState<any | null>(null);
   const recentBuzzTimerRef = useRef<number | null>(null);
 
+  // Winner popup state
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  const [winnerTeam, setWinnerTeam] = useState<any>(null);
+
   const TEAM_COLORS = ["team-1", "team-2", "team-3", "team-4"];
 
   useEffect(() => {
@@ -71,6 +76,28 @@ const SessionManagement = () => {
       fetchTeams();
     }
   }, [sessionId]);
+
+  // Winner detection for fullscreen: prefer winner_team_id; fallback to top-score when quiz ended message is set
+  useEffect(() => {
+    if (gameState && isFullscreen) {
+      const winnerId = (gameState as any).winner_team_id as string | undefined;
+      if (winnerId) {
+        const found = teams.find(t => t.id === winnerId);
+        if (found) {
+          setWinnerTeam(found);
+          setShowWinnerPopup(true);
+          return;
+        }
+      }
+      if (gameState.current_question === "Quiz Ended - Check Results!" && teams.length > 0) {
+        const top = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+        if (top) {
+          setWinnerTeam(top);
+          setShowWinnerPopup(true);
+        }
+      }
+    }
+  }, [gameState, teams, isFullscreen]);
 
   // Realtime subscribe to game_state so buzz lock updates appear in fullscreen
   useEffect(() => {
@@ -473,12 +500,28 @@ const SessionManagement = () => {
         .update({ is_active: false })
         .neq("id", sessionId);
 
+      // Ensure the session exists to satisfy FK
+      const { data: ensuredSession } = await supabase
+        .from("sessions")
+        .select("id")
+        .eq("id", sessionId as string)
+        .single();
+
+      if (!ensuredSession) {
+        toast({
+          title: "Session not found",
+          description: "Please create or select a valid session.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Start quiz with first question
       const firstQuestion = sessionQuestions[0];
       const { error } = await supabase
         .from("game_state")
         .update({
-          current_session_id: sessionId,
+          current_session_id: ensuredSession.id,
           current_question_id: firstQuestion.id,
           current_question: firstQuestion.question_text,
           image_url: firstQuestion.image_url,
@@ -948,7 +991,7 @@ const SessionManagement = () => {
       {/* Footer removed */}
       
       {/* Fullscreen Quiz Display */}
-      {isFullscreen && isQuizActive && sessionQuestions.length > 0 && (
+      {isFullscreen && sessionQuestions.length > 0 && (
         <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-8">
           <div className="text-center space-y-8 max-w-6xl w-full">
             {/* Image Display */}
@@ -1071,6 +1114,16 @@ const SessionManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Winner Popup (visible on question display screen too) */}
+      <WinnerPopup
+        isOpen={showWinnerPopup}
+        onClose={() => {
+          setShowWinnerPopup(false);
+          setWinnerTeam(null);
+        }}
+        winnerTeam={winnerTeam}
+      />
     </div>
   );
 };

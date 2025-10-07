@@ -96,13 +96,19 @@ const BuzzerPage = () => {
       if (!gameState.is_locked) {
         setBuzzed(false);
       }
-      
-      // Check if quiz has ended and show winner
-      if (gameState.quiz_ended && gameState.winner_team_id) {
-        fetchWinnerTeam(gameState.winner_team_id);
+
+      // Winner popup logic: prefer explicit winner_team_id; fallback to top scorer when end message is set
+      if ((gameState as any).winner_team_id) {
+        fetchWinnerTeam((gameState as any).winner_team_id);
+      } else if (gameState.current_question === "Quiz Ended - Check Results!" && teams.length > 0) {
+        const winner = [...teams].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+        if (winner) {
+          setWinnerTeam(winner);
+          setShowWinnerPopup(true);
+        }
       }
     }
-  }, [gameState]);
+  }, [gameState, teams]);
 
   const fetchGameState = async () => {
     const { data, error } = await supabase
@@ -143,20 +149,28 @@ const BuzzerPage = () => {
   const handleBuzz = async () => {
     if (!canBuzz || buzzed) return;
 
-    // Play buzz sound
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = 440;
-    oscillator.type = "square";
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    
-    oscillator.start();
-    setTimeout(() => oscillator.stop(), 200);
+    // Play buzz sound from MP3 file
+    try {
+      const audio = new Audio('/buzzer-sound.mp3');
+      audio.volume = 0.7; // Set volume to 70%
+      await audio.play();
+    } catch (error) {
+      console.error('Error playing buzzer sound:', error);
+      // Fallback to system beep if audio fails
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 440;
+      oscillator.type = "square";
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), 200);
+    }
 
     setBuzzed(true);
 
